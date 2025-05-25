@@ -1,0 +1,34 @@
+# Бинарные файлы
+bin/
+obj/
+
+# Конфигурационные файлы
+*.user
+*.suo
+*.vs
+*.vscode/
+*.csproj.user
+
+# Логи и временные файлы
+*.log
+*.tmp
+
+# Файлы сборки и кэша
+*.dll
+*.exe
+*.pdb
+*.cache
+*.vsconfig
+
+# NuGet пакеты
+packages/
+*.nupkg
+
+# Системные файлы
+Thumbs.db
+Desktop.ini
+
+# IDE файлы
+.vs/
+.idea/
+*.sln.ide
