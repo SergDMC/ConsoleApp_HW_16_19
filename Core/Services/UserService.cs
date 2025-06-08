@@ -1,15 +1,27 @@
-﻿using ToDoListConsoleBot.Models;
+﻿using Core.DataAccess;
+
+using System.Threading.Tasks;
+using System.Threading;
+using System;
+
+using ToDoListConsoleBot.Models;
 
 namespace ToDoListConsoleBot.Services
 {
     public class UserService : IUserService
     {
-        private readonly Dictionary<long, ToDoUser> _users = new();
+        private readonly IUserRepository _userRepository;
 
-        public ToDoUser RegisterUser(long telegramUserId, string telegramUserName)
+        public UserService(IUserRepository userRepository)
         {
-            if (_users.ContainsKey(telegramUserId))
-                return _users[telegramUserId];
+            _userRepository = userRepository;
+        }
+
+        public async Task<ToDoUser> RegisterUserAsync(long telegramUserId, string telegramUserName, CancellationToken cancellationToken)
+        {
+            var existingUser = await _userRepository.GetUserByTelegramUserIdAsync(telegramUserId, cancellationToken);
+            if (existingUser != null)
+                return existingUser;
 
             var user = new ToDoUser
             {
@@ -19,22 +31,13 @@ namespace ToDoListConsoleBot.Services
                 RegisteredAt = DateTime.Now
             };
 
-            _users[telegramUserId] = user;
+            await _userRepository.AddAsync(user, cancellationToken);
             return user;
         }
 
-        public ToDoUser? GetUser(long telegramUserId)
+        public async Task<ToDoUser?> GetUserAsync(long telegramUserId, CancellationToken cancellationToken)
         {
-            _users.TryGetValue(telegramUserId, out var user);
-            return user;
+            return await _userRepository.GetUserByTelegramUserIdAsync(telegramUserId, cancellationToken);
         }
-        
-        private readonly IUserRepository _userRepository;
-
-        public UserService(IUserRepository userRepository)
-        {
-            _userRepository = userRepository;
-        }
-
     }
 }

@@ -1,14 +1,26 @@
-﻿using ToDoListConsoleBot.Models;
+﻿using Core.DataAccess;
+
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
+
+using ToDoListConsoleBot.Models;
 
 namespace ToDoListConsoleBot.Services
 {
     public class ToDoService : IToDoService
     {
-        private readonly List<ToDoItem> _items = new();
+        private readonly IToDoRepository _toDoRepository;
         private const int MaxTasksPerUser = 10;
         private const int MaxTaskNameLength = 100;
 
-        public ToDoItem Add(ToDoUser user, string name)
+        public ToDoService(IToDoRepository toDoRepository)
+        {
+            _toDoRepository = toDoRepository;
+        }
+
+        public async Task<ToDoItem> AddAsync(ToDoUser user, string name, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Имя задачи не может быть пустым.");
@@ -16,7 +28,7 @@ namespace ToDoListConsoleBot.Services
             if (name.Length > MaxTaskNameLength)
                 throw new ArgumentException($"Имя задачи не может превышать {MaxTaskNameLength} символов.");
 
-            var userTasks = _items.Where(i => i.User.UserId == user.UserId).ToList();
+            var userTasks = await _toDoRepository.GetAllByUserIdAsync(user.UserId, cancellationToken);
 
             if (userTasks.Count >= MaxTasksPerUser)
                 throw new InvalidOperationException($"Максимальное количество задач: {MaxTasksPerUser}.");
@@ -33,49 +45,40 @@ namespace ToDoListConsoleBot.Services
                 State = ToDoItemState.Active
             };
 
-            _items.Add(item);
+            await _toDoRepository.AddAsync(item, cancellationToken);
             return item;
         }
 
-        public void Delete(Guid id)
+        public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
         {
-            var item = _items.FirstOrDefault(i => i.Id == id);
-            if (item != null)
-                _items.Remove(item);
+            await _toDoRepository.DeleteAsync(id, cancellationToken);
         }
 
-        public IReadOnlyList<ToDoItem> GetActiveByUserId(Guid userId)
+        public async Task<IReadOnlyList<ToDoItem>> GetActiveByUserIdAsync(Guid userId, CancellationToken cancellationToken)
         {
-            return _items.Where(i => i.User.UserId == userId && i.State == ToDoItemState.Active).ToList();
+            return await _toDoRepository.GetActiveByUserIdAsync(userId, cancellationToken);
         }
 
-        public IReadOnlyList<ToDoItem> GetAllByUserId(Guid userId)
+        public async Task<IReadOnlyList<ToDoItem>> GetAllByUserIdAsync(Guid userId, CancellationToken cancellationToken)
         {
-            return _items.Where(i => i.User.UserId == userId).ToList();
+            return await _toDoRepository.GetAllByUserIdAsync(userId, cancellationToken);
         }
 
-        public void MarkCompleted(Guid id)
+        public async Task MarkCompletedAsync(Guid id, CancellationToken cancellationToken)
         {
-            var item = _items.FirstOrDefault(i => i.Id == id);
+            var item = await _toDoRepository.GetAsync(id, cancellationToken);
             if (item != null && item.State == ToDoItemState.Active)
             {
                 item.State = ToDoItemState.Completed;
                 item.StateChangedAt = DateTime.Now;
+                await _toDoRepository.UpdateAsync(item, cancellationToken);
             }
         }
-        
-        private readonly IToDoRepository _toDoRepository;
 
-        public ToDoService(IToDoRepository toDoRepository)
+        public async Task<IReadOnlyList<ToDoItem>> FindAsync(ToDoUser user, string namePrefix, CancellationToken cancellationToken)
         {
-            _toDoRepository = toDoRepository;
+            return await _toDoRepository.FindAsync(user.UserId, x =>
+                x.Name.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase), cancellationToken);
         }
-
-        public IReadOnlyList<ToDoItem> Find(ToDoUser user, string namePrefix)
-        {
-            return _toDoRepository.Find(user.Id, x => x.Name.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase));
-        }
-
-
     }
 }
