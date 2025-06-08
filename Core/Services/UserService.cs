@@ -28,5 +28,13 @@ namespace ToDoListConsoleBot.Services
             _users.TryGetValue(telegramUserId, out var user);
             return user;
         }
+        
+        private readonly IUserRepository _userRepository;
+
+        public UserService(IUserRepository userRepository)
+        {
+            _userRepository = userRepository;
+        }
+
     }
 }

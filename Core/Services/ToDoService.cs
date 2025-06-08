@@ -63,5 +63,19 @@ namespace ToDoListConsoleBot.Services
                 item.StateChangedAt = DateTime.Now;
             }
         }
+        
+        private readonly IToDoRepository _toDoRepository;
+
+        public ToDoService(IToDoRepository toDoRepository)
+        {
+            _toDoRepository = toDoRepository;
+        }
+
+        public IReadOnlyList<ToDoItem> Find(ToDoUser user, string namePrefix)
+        {
+            return _toDoRepository.Find(user.Id, x => x.Name.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase));
+        }
+
+
     }
 }

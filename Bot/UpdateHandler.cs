@@ -134,6 +134,9 @@ namespace ToDoListConsoleBot.Bot
                                    "/showtasks - показать активные задачи\n" +
                                    "/showalltasks - показать все задачи\n" +
                                    "/help - показать это сообщение";
+                                   "/report — статистика задач  \r\n" +
+                                   "/find <prefix> — найти задачи по префиксу имени  \r\n"
+
                     await _botClient.SendMessage(chatId, helpText);
                 }
                 else if (text.StartsWith("/info"))
@@ -144,6 +147,37 @@ namespace ToDoListConsoleBot.Bot
                 {
                     await _botClient.SendMessage(chatId, "Неизвестная команда. Используйте /help для списка доступных команд.");
                 }
+                else if (messageText.StartsWith("/report"))
+                {
+                    var user = _userService.GetOrCreateUser(message.From!);
+                    var (total, completed, active, generatedAt) = _reportService.GetUserStats(user.Id);
+                    await _botClient.SendTextMessageAsync(chatId,
+                        $"Статистика по задачам на {generatedAt:G}. Всего: {total}; Завершённых: {completed}; Активных: {active};");
+                }
+                else if (messageText.StartsWith("/find"))
+                {
+                    var user = _userService.GetOrCreateUser(message.From!);
+                    var parts = messageText.Split(' ', 2);
+                    if (parts.Length < 2)
+                    {
+                        await _botClient.SendTextMessageAsync(chatId, "Укажите префикс имени задачи: /find <prefix>");
+                        return;
+                    }
+
+                    var tasks = _toDoService.Find(user, parts[1]);
+                    if (!tasks.Any())
+                    {
+                        await _botClient.SendTextMessageAsync(chatId, "Задачи не найдены.");
+                        return;
+                    }
+
+                    foreach (var task in tasks)
+                    {
+                        await _botClient.SendTextMessageAsync(chatId, $"[{task.Id}] {task.Name} - {(task.IsActive ? "Активна" : "Завершена")}");
+                    }
+                }
+
+
             }
             catch (Exception ex)
             {
