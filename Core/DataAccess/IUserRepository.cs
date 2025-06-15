@@ -1,11 +1,11 @@
-using Core.Entities;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
+using ToDoListConsoleBot.Models;
 
-namespace Core.DataAccess
+public interface IUserRepository
 {
-	public interface IUserRepository
-	{
-		ToDoUser? GetUser(Guid userId);
-		ToDoUser? GetUserByTelegramUserId(long telegramUserId);
-		void Add(ToDoUser user);
-	}
+    Task<ToDoUser?> GetUserAsync(Guid userId, CancellationToken cancellationToken);
+    Task<ToDoUser?> GetUserByTelegramUserIdAsync(long telegramUserId, CancellationToken cancellationToken);
+    Task AddAsync(ToDoUser user, CancellationToken cancellationToken);
 }

@@ -1,13 +1,15 @@
-﻿using ToDoListConsoleBot.Models;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
+using ToDoListConsoleBot.Models;
 
-namespace ToDoListConsoleBot.Services
+public interface IToDoService
 {
-    public interface IToDoService
-    {
-        IReadOnlyList<ToDoItem> GetAllByUserId(Guid userId);
-        IReadOnlyList<ToDoItem> GetActiveByUserId(Guid userId);
-        ToDoItem Add(ToDoUser user, string name);
-        void MarkCompleted(Guid id);
-        void Delete(Guid id);
-    }
+    Task<IReadOnlyList<ToDoItem>> GetAllByUserIdAsync(Guid userId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ToDoItem>> GetActiveByUserIdAsync(Guid userId, CancellationToken cancellationToken);
+    Task<ToDoItem> AddAsync(ToDoUser user, string name, CancellationToken cancellationToken);
+    Task MarkCompletedAsync(Guid id, CancellationToken cancellationToken);
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ToDoItem>> FindAsync(ToDoUser user, string namePrefix, CancellationToken cancellationToken);
 }
