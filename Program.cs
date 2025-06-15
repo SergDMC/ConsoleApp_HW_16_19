@@ -1,15 +1,9 @@
-﻿using Core.DataAccess;
-using Core.Repositories;
-using Core.Services;
-
+﻿using Core.Services;
 using Infrastructure.DataAccess;
-
 using Otus.ToDoList.ConsoleBot;
 using Otus.ToDoList.ConsoleBot.Types;
 using System.Threading.Tasks;
-
 using System.Threading;
-
 using System;
 
 using ToDoListConsoleBot.Bot;
@@ -32,40 +26,56 @@ class Program
         ITelegramBotClient botClient = new ConsoleBotClient();
         var updateHandler = new UpdateHandler(botClient, userService, toDoService, reportService);
 
+        // Подписываемся на события
+        void OnStarted(string message) => Console.WriteLine($"[START] Команда получена: {message}");
+        void OnCompleted(string message) => Console.WriteLine($"[DONE] Команда обработана: {message}");
+
+        updateHandler.OnHandleUpdateStarted += OnStarted;
+        updateHandler.OnHandleUpdateCompleted += OnCompleted;
+
         Console.WriteLine("Бот запущен. Введите команды:");
 
-        while (true)
+        try
         {
-            var input = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(input))
-                continue;
-
-            var update = new Update
+            while (true)
             {
-                Message = new Message
+                var input = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(input))
+                    continue;
+
+                var update = new Update
                 {
-                    Text = input,
-                    From = new User
+                    Message = new Message
                     {
-                        Id = 1,
-                        Username = "ConsoleUser"
-                    },
-                    Chat = new Chat
-                    {
-                        Id = 1
+                        Text = input,
+                        From = new User
+                        {
+                            Id = 1,
+                            Username = "ConsoleUser"
+                        },
+                        Chat = new Chat
+                        {
+                            Id = 1
+                        }
                     }
-                }
-            };
+                };
 
-            try
-            {
-                var cts = new CancellationTokenSource();
-                await updateHandler.HandleUpdateAsync(update, cts.Token);
+                try
+                {
+                    var cts = new CancellationTokenSource();
+                    await updateHandler.HandleUpdateAsync(update, cts.Token);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка: {ex.Message}");
-            }
+        }
+        finally
+        {
+            // Отписка от событий
+            updateHandler.OnHandleUpdateStarted -= OnStarted;
+            updateHandler.OnHandleUpdateCompleted -= OnCompleted;
         }
     }
 }

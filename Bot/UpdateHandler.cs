@@ -13,12 +13,18 @@ using ToDoListConsoleBot.Services;
 
 namespace ToDoListConsoleBot.Bot
 {
+    // Делегат для событий
+    public delegate void MessageEventHandler(string message);
+
     public class UpdateHandler : IUpdateHandler
     {
         private readonly ITelegramBotClient _botClient;
         private readonly IUserService _userService;
         private readonly IToDoService _toDoService;
         private readonly IToDoReportService _reportService;
+
+        public event MessageEventHandler? OnHandleUpdateStarted;
+        public event MessageEventHandler? OnHandleUpdateCompleted;
 
         public UpdateHandler(
             ITelegramBotClient botClient,
@@ -34,16 +40,18 @@ namespace ToDoListConsoleBot.Bot
 
         public async Task HandleUpdateAsync(Update update, CancellationToken cancellationToken = default)
         {
+            var message = update.Message;
+            var user = message.From;
+            var chatId = message.Chat.Id;
+            var text = message.Text?.Trim();
+
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            OnHandleUpdateStarted?.Invoke(text);
+
             try
             {
-                var message = update.Message;
-                var user = message.From;
-                var chatId = message.Chat.Id;
-                var text = message.Text?.Trim();
-
-                if (string.IsNullOrEmpty(text))
-                    return;
-
                 var currentUser = await _userService.GetUserAsync(user.Id, cancellationToken);
 
                 if (text.StartsWith("/start"))
@@ -185,6 +193,10 @@ namespace ToDoListConsoleBot.Bot
             catch (Exception ex)
             {
                 await _botClient.SendMessage(update.Message.Chat.Id, $"Произошла ошибка: {ex.Message}", cancellationToken);
+            }
+            finally
+            {
+                OnHandleUpdateCompleted?.Invoke(text!);
             }
         }
     }
