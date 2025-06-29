@@ -1,4 +1,6 @@
-﻿namespace ToDoListConsoleBot.Models
+﻿using System;
+
+namespace ToDoListConsoleBot.Models
 {
     public class ToDoItem
     {
@@ -8,5 +10,10 @@
         public DateTime CreatedAt { get; set; }
         public ToDoItemState State { get; set; }
         public DateTime? StateChangedAt { get; set; }
+
+        // Добавленные свойства для удобства репозитория
+        public Guid UserId => User?.UserId ?? Guid.Empty;
+
+        public bool IsActive => State == ToDoItemState.Active;
     }
 }

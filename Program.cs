@@ -1,81 +1,96 @@
-﻿using Core.Services;
-using Infrastructure.DataAccess;
-using Otus.ToDoList.ConsoleBot;
-using Otus.ToDoList.ConsoleBot.Types;
-using System.Threading.Tasks;
+﻿using System;
 using System.Threading;
-using System;
+using System.Threading.Tasks;
 
+using Telegram.Bot;
+using Telegram.Bot.Polling;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
+
+using Core.Services;
+using Infrastructure.DataAccess;
 using ToDoListConsoleBot.Bot;
 using ToDoListConsoleBot.Services;
 
-class Program
+internal class Program
 {
     static async Task Main(string[] args)
     {
-        // Создаем репозитории
+        // Репозитории
         IUserRepository userRepository = new InMemoryUserRepository();
         IToDoRepository toDoRepository = new InMemoryToDoRepository();
 
-        // Создаем сервисы
+        // Сервисы
         IUserService userService = new UserService(userRepository);
         IToDoService toDoService = new ToDoService(toDoRepository);
         IToDoReportService reportService = new ToDoReportService(toDoRepository);
 
-        // Создаем клиента бота и обработчик обновлений
-        ITelegramBotClient botClient = new ConsoleBotClient();
+        // Токен из переменной среды
+        var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("Ошибка: переменная среды TELEGRAM_BOT_TOKEN не установлена.");
+            Console.ResetColor();
+            return;
+        }
+
+        ITelegramBotClient botClient = new TelegramBotClient(token);
         var updateHandler = new UpdateHandler(botClient, userService, toDoService, reportService);
 
-        // Подписываемся на события
-        void OnStarted(string message) => Console.WriteLine($"[START] Команда получена: {message}");
-        void OnCompleted(string message) => Console.WriteLine($"[DONE] Команда обработана: {message}");
+        using var cts = new CancellationTokenSource();
+        var cancellationToken = cts.Token;
 
-        updateHandler.OnHandleUpdateStarted += OnStarted;
-        updateHandler.OnHandleUpdateCompleted += OnCompleted;
-
-        Console.WriteLine("Бот запущен. Введите команды:");
-
-        try
+        var receiverOptions = new ReceiverOptions
         {
-            while (true)
+            AllowedUpdates = new[] { UpdateType.Message },
+            DropPendingUpdates = true
+        };
+
+        botClient.StartReceiving(
+            updateHandler.HandleUpdateAsync,
+            updateHandler.HandlePollingErrorAsync,
+            receiverOptions,
+            cancellationToken
+        );
+
+        var me = await botClient.GetMeAsync(cancellationToken);
+        Console.WriteLine($"{me.FirstName} (@{me.Username}) запущен!");
+
+        // Установка списка доступных команд в меню Telegram
+        await botClient.SetMyCommandsAsync(new[]
+        {
+            new BotCommand { Command = "start", Description = "Регистрация" },
+            new BotCommand { Command = "addtask", Description = "Добавить задачу" },
+            new BotCommand { Command = "removetask", Description = "Удалить задачу" },
+            new BotCommand { Command = "completetask", Description = "Завершить задачу" },
+            new BotCommand { Command = "showtasks", Description = "Показать активные задачи" },
+            new BotCommand { Command = "showalltasks", Description = "Показать все задачи" },
+            new BotCommand { Command = "report", Description = "Статистика задач" },
+            new BotCommand { Command = "find", Description = "Найти задачу по имени" },
+            new BotCommand { Command = "help", Description = "Справка" },
+            new BotCommand { Command = "info", Description = "О боте" }
+        }, cancellationToken: cancellationToken);
+
+        Console.WriteLine("Нажмите клавишу A для выхода.");
+
+        // Обработка клавиш
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var key = Console.ReadKey(intercept: true);
+            if (key.Key == ConsoleKey.A)
             {
-                var input = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(input))
-                    continue;
-
-                var update = new Update
-                {
-                    Message = new Message
-                    {
-                        Text = input,
-                        From = new User
-                        {
-                            Id = 1,
-                            Username = "ConsoleUser"
-                        },
-                        Chat = new Chat
-                        {
-                            Id = 1
-                        }
-                    }
-                };
-
-                try
-                {
-                    var cts = new CancellationTokenSource();
-                    await updateHandler.HandleUpdateAsync(update, cts.Token);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[ERROR] {ex.Message}");
-                }
+                Console.WriteLine("\nЗавершение работы...");
+                cts.Cancel();
+                break;
+            }
+            else
+            {
+                Console.WriteLine($"Бот: {me.FirstName}, username: @{me.Username}, ID: {me.Id}");
             }
         }
-        finally
-        {
-            // Отписка от событий
-            updateHandler.OnHandleUpdateStarted -= OnStarted;
-            updateHandler.OnHandleUpdateCompleted -= OnCompleted;
-        }
+
+        // Ждем завершения фоновых задач, если потребуется
+        await Task.Delay(1000);
     }
 }

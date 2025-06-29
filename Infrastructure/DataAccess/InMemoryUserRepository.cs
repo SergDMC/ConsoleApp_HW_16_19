@@ -1,5 +1,10 @@
-using Core.DataAccess;
-using Core.Entities;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+using ToDoListConsoleBot.Models;
 
 namespace Infrastructure.DataAccess
 {
@@ -7,12 +12,22 @@ namespace Infrastructure.DataAccess
     {
         private readonly List<ToDoUser> _users = new();
 
-        public void Add(ToDoUser user) => _users.Add(user);
+        public Task AddAsync(ToDoUser user, CancellationToken cancellationToken)
+        {
+            _users.Add(user);
+            return Task.CompletedTask;
+        }
 
-        public ToDoUser? GetUser(Guid userId) =>
-            _users.FirstOrDefault(u => u.Id == userId);
+        public Task<ToDoUser?> GetUserAsync(Guid userId, CancellationToken cancellationToken)
+        {
+            var user = _users.FirstOrDefault(u => u.UserId == userId);
+            return Task.FromResult(user);
+        }
 
-        public ToDoUser? GetUserByTelegramUserId(long telegramUserId) =>
-            _users.FirstOrDefault(u => u.TelegramUserId == telegramUserId);
+        public Task<ToDoUser?> GetUserByTelegramUserIdAsync(long telegramUserId, CancellationToken cancellationToken)
+        {
+            var user = _users.FirstOrDefault(u => u.TelegramUserId == telegramUserId);
+            return Task.FromResult(user);
+        }
     }
 }

@@ -1,5 +1,4 @@
-﻿using Otus.ToDoList.ConsoleBot.Types;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using System.Threading;
 
 using ToDoListConsoleBot.Models;
