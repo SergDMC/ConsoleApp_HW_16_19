@@ -1,10 +1,10 @@
-﻿using ToDoListConsoleBot.Models;
+﻿using System.Threading.Tasks;
+using System.Threading;
 
-namespace ToDoListConsoleBot.Services
+using ToDoListConsoleBot.Models;
+
+public interface IUserService
 {
-    public interface IUserService
-    {
-        ToDoUser RegisterUser(long telegramUserId, string telegramUserName);
-        ToDoUser? GetUser(long telegramUserId);
-    }
+    Task<ToDoUser> RegisterUserAsync(long telegramUserId, string telegramUserName, CancellationToken cancellationToken);
+    Task<ToDoUser?> GetUserAsync(long telegramUserId, CancellationToken cancellationToken);
 }

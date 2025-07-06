@@ -1,4 +1,6 @@
-﻿namespace ToDoListConsoleBot.Models
+﻿using System;
+
+namespace ToDoListConsoleBot.Models
 {
     public class ToDoUser
     {
