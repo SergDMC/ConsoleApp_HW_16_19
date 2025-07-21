@@ -11,14 +11,15 @@ using Core.Services;
 using Infrastructure.DataAccess;
 using ToDoListConsoleBot.Bot;
 using ToDoListConsoleBot.Services;
+using ToDoListConsoleBot.Infrastructure.DataAccess;
 
 internal class Program
 {
     static async Task Main(string[] args)
     {
         // Репозитории
-        IUserRepository userRepository = new InMemoryUserRepository();
-        IToDoRepository toDoRepository = new InMemoryToDoRepository();
+        IUserRepository userRepository = new FileUserRepository("UserData");
+        IToDoRepository toDoRepository = new FileToDoRepository("ToDoData");
 
         // Сервисы
         IUserService userService = new UserService(userRepository);
