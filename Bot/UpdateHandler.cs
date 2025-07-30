@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,8 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
+using ToDoListConsoleBot.Scenarios;
+
 namespace ToDoListConsoleBot.Bot
 {
     public class UpdateHandler : IUpdateHandler
@@ -19,17 +22,23 @@ namespace ToDoListConsoleBot.Bot
         private readonly IUserService _userService;
         private readonly IToDoService _toDoService;
         private readonly IToDoReportService _reportService;
+        private readonly IScenarioContextRepository _contextRepository;
+        private readonly IEnumerable<IScenario> _scenarios;
 
         public UpdateHandler(
             ITelegramBotClient botClient,
             IUserService userService,
             IToDoService toDoService,
-            IToDoReportService reportService)
+            IToDoReportService reportService,
+            IScenarioContextRepository contextRepository,
+            IEnumerable<IScenario> scenarios)
         {
             _botClient = botClient;
             _userService = userService;
             _toDoService = toDoService;
             _reportService = reportService;
+            _contextRepository = contextRepository;
+            _scenarios = scenarios;
         }
 
         public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
@@ -46,7 +55,23 @@ namespace ToDoListConsoleBot.Bot
                 var currentUser = await _userService.GetUserAsync(from.Id, cancellationToken);
                 var keyboardMarkup = BuildKeyboard(currentUser != null);
 
-                // Команды
+                // Обработка команды /cancel до любых сценариев
+                if (text == "/cancel")
+                {
+                    await _contextRepository.ResetContext(from.Id, cancellationToken);
+                    await _botClient.SendTextMessageAsync(chatId, "Сценарий отменён.", replyMarkup: keyboardMarkup, cancellationToken: cancellationToken);
+                    return;
+                }
+
+                // Обработка активного сценария
+                var context = await _contextRepository.GetContext(from.Id, cancellationToken);
+                if (context is not null)
+                {
+                    await ProcessScenario(context, update, cancellationToken);
+                    return;
+                }
+
+                // Обработка команд
                 if (text.StartsWith("/start"))
                 {
                     if (currentUser == null)
@@ -75,17 +100,13 @@ namespace ToDoListConsoleBot.Bot
 
                 if (text.StartsWith("/addtask"))
                 {
-                    var taskName = text[8..].Trim();
-                    if (string.IsNullOrEmpty(taskName))
-                    {
-                        await _botClient.SendTextMessageAsync(chatId, "Пожалуйста, укажите название задачи.", cancellationToken: cancellationToken);
-                        return;
-                    }
-
-                    var item = await _toDoService.AddAsync(currentUser, taskName, cancellationToken);
-                    await _botClient.SendTextMessageAsync(chatId, $"Задача добавлена: {item.Name}", cancellationToken: cancellationToken);
+                    var scenarioContext = new ScenarioContext(from.Id, ScenarioType.AddTask);
+                    await _contextRepository.SetContext(from.Id, scenarioContext, cancellationToken);
+                    await ProcessScenario(scenarioContext, update, cancellationToken);
+                    return;
                 }
-                else if (text.StartsWith("/removetask"))
+
+                if (text.StartsWith("/removetask"))
                 {
                     if (Guid.TryParse(text[11..].Trim(), out var id))
                     {
@@ -175,13 +196,14 @@ namespace ToDoListConsoleBot.Bot
                 {
                     var helpText = string.Join('\n', new[]
                     {
-                        "/addtask [название] – добавить задачу",
+                        "/addtask – добавить задачу (сценарий)",
                         "/removetask [ID] – удалить задачу",
                         "/completetask [ID] – завершить задачу",
                         "/showtasks – активные задачи",
                         "/showalltasks – все задачи",
                         "/report – статистика",
                         "/find [префикс] – поиск задач",
+                        "/cancel – отменить текущий сценарий",
                         "/help – справка",
                         "/info – о боте"
                     });
@@ -203,7 +225,7 @@ namespace ToDoListConsoleBot.Bot
             }
             catch (Exception ex)
             {
-                await _botClient.SendTextMessageAsync(update.Message.Chat.Id, $"Ошибка: {ex.Message}", cancellationToken: cancellationToken);
+                await _botClient.SendTextMessageAsync(update.Message!.Chat.Id, $"Ошибка: {ex.Message}", cancellationToken: cancellationToken);
             }
         }
 
@@ -218,6 +240,7 @@ namespace ToDoListConsoleBot.Bot
             return isRegistered
                 ? new ReplyKeyboardMarkup(new[]
                 {
+                    new[] { new KeyboardButton("/addtask") },
                     new[] { new KeyboardButton("/showalltasks"), new KeyboardButton("/showtasks") },
                     new[] { new KeyboardButton("/report") }
                 })
@@ -227,6 +250,30 @@ namespace ToDoListConsoleBot.Bot
                     new[] { new KeyboardButton("/start") }
                 })
                 { ResizeKeyboard = true };
+        }
+
+        private IScenario GetScenario(ScenarioType scenario)
+        {
+            return _scenarios.FirstOrDefault(s => s.CanHandle(scenario))
+                   ?? throw new InvalidOperationException($"Сценарий {scenario} не поддерживается.");
+        }
+
+        private async Task ProcessScenario(ScenarioContext context, Update update, CancellationToken ct)
+        {
+            var scenario = GetScenario(context.CurrentScenario);
+            var result = await scenario.HandleMessageAsync(_botClient, context, update, ct);
+
+            if (result == ScenarioResult.Completed)
+            {
+                await _contextRepository.ResetContext(context.UserId, ct);
+                var keyboard = BuildKeyboard(true);
+                await _botClient.SendTextMessageAsync(update.Message!.Chat.Id, "Сценарий завершён.", replyMarkup: keyboard, cancellationToken: ct);
+            }
+            else
+            {
+                await _contextRepository.SetContext(context.UserId, context, ct);
+                // Клавиатура /cancel остаётся
+            }
         }
     }
 }
