@@ -5,6 +5,7 @@ using System.Threading;
 using System;
 
 using ToDoListConsoleBot.Models;
+using ToDoListConsoleBot.Core.Entities;
 
 namespace ToDoListConsoleBot.Services
 {
@@ -19,7 +20,7 @@ namespace ToDoListConsoleBot.Services
             _toDoRepository = toDoRepository;
         }
 
-        public async Task<ToDoItem> AddAsync(ToDoUser user, string name, DateTime deadline CancellationToken cancellationToken)
+        public async Task<ToDoItem> AddAsync(ToDoUser user, string name, ToDoList? list, DateTime deadline CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Имя задачи не может быть пустым.");
@@ -41,8 +42,9 @@ namespace ToDoListConsoleBot.Services
                 User = user,
                 Name = name,
                 CreatedAt = DateTime.Now,
-                State = ToDoItemState.Active
-                Deadline = deadline
+                State = ToDoItemState.Active,
+                Deadline = deadline,
+                List = list,
             };
 
             await _toDoRepository.AddAsync(item, cancellationToken);

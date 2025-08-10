@@ -9,6 +9,8 @@ namespace ToDoListConsoleBot.Scenarios
     public enum ScenarioType
     {
         None,
-        AddTask
+        AddTask,
+        AddList,
+        DeleteList
     }
 }
