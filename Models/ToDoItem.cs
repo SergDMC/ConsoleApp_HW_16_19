@@ -1,5 +1,7 @@
 ﻿using System;
 
+using ToDoListConsoleBot.Core.Entities;
+
 namespace ToDoListConsoleBot.Models
 {
     public class ToDoItem
@@ -13,6 +15,9 @@ namespace ToDoListConsoleBot.Models
 
         // Новый параметр дедлайна
         public DateTime Deadline { get; set; }
+        
+        // Привязка к списку
+        public ToDoList? List { get; set; }
 
         // Добавленные свойства для удобства репозитория
         public Guid UserId => User?.UserId ?? Guid.Empty;

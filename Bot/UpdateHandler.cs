@@ -13,6 +13,8 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
 using ToDoListConsoleBot.Scenarios;
+using ToDoListConsoleBot.TelegramBot.Dto;
+using ToDoListConsoleBot.Core.Services;
 
 namespace ToDoListConsoleBot.Bot
 {
@@ -24,6 +26,7 @@ namespace ToDoListConsoleBot.Bot
         private readonly IToDoReportService _reportService;
         private readonly IScenarioContextRepository _contextRepository;
         private readonly IEnumerable<IScenario> _scenarios;
+        private readonly IToDoListService _toDoListService;
 
         public UpdateHandler(
             ITelegramBotClient botClient,
@@ -31,7 +34,9 @@ namespace ToDoListConsoleBot.Bot
             IToDoService toDoService,
             IToDoReportService reportService,
             IScenarioContextRepository contextRepository,
-            IEnumerable<IScenario> scenarios)
+            IEnumerable<IScenario> scenarios,
+            IToDoListService toDoListService)
+
         {
             _botClient = botClient;
             _userService = userService;
@@ -39,23 +44,34 @@ namespace ToDoListConsoleBot.Bot
             _reportService = reportService;
             _contextRepository = contextRepository;
             _scenarios = scenarios;
+            _toDoListService = toDoListService;
         }
 
         public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            if (update.Type != UpdateType.Message || update.Message?.Text is not { } text || update.Message.From is null)
+            if (update.CallbackQuery != null)
+            {
+                await HandleCallbackQueryAsync(update.CallbackQuery, cancellationToken);
                 return;
+            }
 
-            var message = update.Message;
+            if (update.Message?.Text is { } text && update.Message.From != null)
+            {
+                await HandleMessageAsync(update.Message, cancellationToken);
+            }
+        }
+
+        private async Task HandleMessageAsync(Message message, CancellationToken cancellationToken)
+        {
+            var text = message.Text!;
+            var from = message.From!;
             var chatId = message.Chat.Id;
-            var from = message.From;
 
             try
             {
                 var currentUser = await _userService.GetUserAsync(from.Id, cancellationToken);
                 var keyboardMarkup = BuildKeyboard(currentUser != null);
 
-                // Обработка команды /cancel до любых сценариев
                 if (text == "/cancel")
                 {
                     await _contextRepository.ResetContext(from.Id, cancellationToken);
@@ -63,15 +79,13 @@ namespace ToDoListConsoleBot.Bot
                     return;
                 }
 
-                // Обработка активного сценария
                 var context = await _contextRepository.GetContext(from.Id, cancellationToken);
-                if (context is not null)
+                if (context != null)
                 {
-                    await ProcessScenario(context, update, cancellationToken);
+                    await ProcessScenario(context, new Update { Message = message }, cancellationToken);
                     return;
                 }
 
-                // Обработка команд
                 if (text.StartsWith("/start"))
                 {
                     if (currentUser == null)
@@ -98,6 +112,44 @@ namespace ToDoListConsoleBot.Bot
                     return;
                 }
 
+                if (text == "/show")
+                {
+                    var lists = await _toDoListService.GetAllByUserIdAsync(currentUser.UserId, cancellationToken);
+
+                    var buttons = new List<List<InlineKeyboardButton>>();
+
+                    buttons.Add(new List<InlineKeyboardButton>
+                    {
+                        InlineKeyboardButton.WithCallbackData(
+                            "📌Без списка",
+                            new ToDoListCallbackDto { Action = "show", ToDoListId = null }.ToString())
+                    });
+
+                    foreach (var list in lists)
+                    {
+                        buttons.Add(new List<InlineKeyboardButton>
+                        {
+                            InlineKeyboardButton.WithCallbackData(
+                                list.Name,
+                                new ToDoListCallbackDto { Action = "show", ToDoListId = list.Id }.ToString())
+                        });
+                    }
+
+                    buttons.Add(new List<InlineKeyboardButton>
+                    {
+                        InlineKeyboardButton.WithCallbackData("🆕Добавить", "addlist"),
+                        InlineKeyboardButton.WithCallbackData("❌Удалить", "deletelist")
+                    });
+
+                    await _botClient.SendTextMessageAsync(
+                        chatId,
+                        "Выберите список",
+                        replyMarkup: new InlineKeyboardMarkup(buttons),
+                        cancellationToken: cancellationToken);
+
+                    return;
+                }
+
                 if (text.StartsWith("/addtask"))
                 {
                     var scenarioContext = new ScenarioContext(from.Id, ScenarioType.AddTask);
@@ -105,7 +157,6 @@ namespace ToDoListConsoleBot.Bot
                     await ProcessScenario(scenarioContext, update, cancellationToken);
                     return;
                 }
-
                 if (text.StartsWith("/removetask"))
                 {
                     if (Guid.TryParse(text[11..].Trim(), out var id))
@@ -118,6 +169,7 @@ namespace ToDoListConsoleBot.Bot
                         await _botClient.SendTextMessageAsync(chatId, "Неверный формат ID задачи.", cancellationToken: cancellationToken);
                     }
                 }
+
                 else if (text.StartsWith("/completetask"))
                 {
                     if (Guid.TryParse(text[14..].Trim(), out var id))
@@ -130,38 +182,7 @@ namespace ToDoListConsoleBot.Bot
                         await _botClient.SendTextMessageAsync(chatId, "Неверный формат ID задачи.", cancellationToken: cancellationToken);
                     }
                 }
-                else if (text.StartsWith("/showtasks"))
-                {
-                    var tasks = await _toDoService.GetActiveByUserIdAsync(currentUser.UserId, cancellationToken);
-                    if (!tasks.Any())
-                    {
-                        await _botClient.SendTextMessageAsync(chatId, "Нет активных задач.", cancellationToken: cancellationToken);
-                    }
-                    else
-                    {
-                        foreach (var task in tasks)
-                        {
-                            var line = $"`{task.Id}` - {task.Name} - {task.CreatedAt:dd.MM.yyyy HH:mm:ss}";
-                            await _botClient.SendTextMessageAsync(chatId, line, ParseMode.Markdown, cancellationToken: cancellationToken);
-                        }
-                    }
-                }
-                else if (text.StartsWith("/showalltasks"))
-                {
-                    var tasks = await _toDoService.GetAllByUserIdAsync(currentUser.UserId, cancellationToken);
-                    if (!tasks.Any())
-                    {
-                        await _botClient.SendTextMessageAsync(chatId, "Нет задач.", cancellationToken: cancellationToken);
-                    }
-                    else
-                    {
-                        foreach (var task in tasks)
-                        {
-                            var line = $"`{task.Id}` - {task.Name} ({task.State}) - {task.CreatedAt:dd.MM.yyyy HH:mm:ss}";
-                            await _botClient.SendTextMessageAsync(chatId, line, ParseMode.Markdown, cancellationToken: cancellationToken);
-                        }
-                    }
-                }
+
                 else if (text.StartsWith("/report"))
                 {
                     var stats = await _reportService.GetUserStatsAsync(currentUser.UserId, cancellationToken);
@@ -196,11 +217,10 @@ namespace ToDoListConsoleBot.Bot
                 {
                     var helpText = string.Join('\n', new[]
                     {
+                        "/show - выбрать список",
                         "/addtask – добавить задачу (сценарий)",
                         "/removetask [ID] – удалить задачу",
                         "/completetask [ID] – завершить задачу",
-                        "/showtasks – активные задачи",
-                        "/showalltasks – все задачи",
                         "/report – статистика",
                         "/find [префикс] – поиск задач",
                         "/cancel – отменить текущий сценарий",
@@ -223,56 +243,130 @@ namespace ToDoListConsoleBot.Bot
                         cancellationToken: cancellationToken);
                 }
             }
+
             catch (Exception ex)
             {
-                await _botClient.SendTextMessageAsync(update.Message!.Chat.Id, $"Ошибка: {ex.Message}", cancellationToken: cancellationToken);
+                await _botClient.SendTextMessageAsync(message.Chat.Id, $"Ошибка: {ex.Message}", cancellationToken: cancellationToken);
             }
-        }
 
-        public Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
-        {
-            Console.WriteLine($"Polling error: {exception}");
-            return Task.CompletedTask;
-        }
+            private async Task HandleCallbackQueryAsync(CallbackQuery callbackQuery, CancellationToken cancellationToken)
+            {
+                var from = callbackQuery.From;
+                if (from == null)
+                    return;
 
-        private static IReplyMarkup BuildKeyboard(bool isRegistered)
-        {
-            return isRegistered
-                ? new ReplyKeyboardMarkup(new[]
+                var currentUser = await _userService.GetUserAsync(from.Id, cancellationToken);
+                if (currentUser == null)
                 {
+                    
+                    await _botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
+                        "Пожалуйста, зарегистрируйтесь через команду /start.",
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(callbackQuery.Data))
+                    return;
+
+                try
+                {
+                    var dto = CallbackDto.FromString(callbackQuery.Data);
+
+                    if (dto.Action == "show")
+                    {
+                        var toDoListDto = ToDoListCallbackDto.FromString(callbackQuery.Data);
+                        IReadOnlyList<ToDoListConsoleBot.Core.Entities.ToDoItem> tasks;
+
+                        if (toDoListDto.ToDoListId == null)
+                        {
+                            // Получаем задачи без списка
+                            tasks = await _toDoService.GetActiveByUserIdWithoutListAsync(currentUser.UserId, cancellationToken);
+                        }
+                        else
+                        {
+                            // Получаем задачи конкретного списка
+                            tasks = await _toDoService.GetActiveByListIdAsync(toDoListDto.ToDoListId.Value, cancellationToken);
+                        }
+
+                        if (tasks.Count == 0)
+                        {
+                            await _botClient.SendTextMessageAsync(callbackQuery.Message!.Chat.Id,
+                                "Задачи не найдены.", cancellationToken: cancellationToken);
+                        }
+                        else
+                        {
+                            foreach (var task in tasks)
+                            {
+                                var status = task.IsActive ? "Активна" : "Завершена";
+                                var text = $"[{task.Id}] {task.Name} - {status}";
+                                await _botClient.SendTextMessageAsync(callbackQuery.Message!.Chat.Id, text, cancellationToken: cancellationToken);
+                            }
+                        }
+                    }
+                    else if (dto.Action == "addlist")
+                    {
+                        await _botClient.SendTextMessageAsync(callbackQuery.Message!.Chat.Id,
+                            "Добавить новый список", cancellationToken: cancellationToken);
+                    }
+                    else if (dto.Action == "deletelist")
+                    {
+                        await _botClient.SendTextMessageAsync(callbackQuery.Message!.Chat.Id,
+                            "Удалить список", cancellationToken: cancellationToken);
+                    }
+                    else
+                    {
+                        await _botClient.SendTextMessageAsync(callbackQuery.Message!.Chat.Id,
+                            $"Неизвестное действие: {dto.Action}", cancellationToken: cancellationToken);
+                    }
+
+                    await _botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
+                }
+                catch
+                {
+                    await _botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Ошибка обработки кнопки", cancellationToken: cancellationToken);
+                }
+            }
+
+
+            private static IReplyMarkup BuildKeyboard(bool isRegistered)
+            {
+                return isRegistered
+                    ? new ReplyKeyboardMarkup(new[]
+                    {
                     new[] { new KeyboardButton("/addtask") },
-                    new[] { new KeyboardButton("/showalltasks"), new KeyboardButton("/showtasks") },
+                    new[] { new KeyboardButton("/show") },
                     new[] { new KeyboardButton("/report") }
-                })
-                { ResizeKeyboard = true }
-                : new ReplyKeyboardMarkup(new[]
-                {
+                    })
+                    { ResizeKeyboard = true }
+                    : new ReplyKeyboardMarkup(new[]
+                    {
                     new[] { new KeyboardButton("/start") }
-                })
-                { ResizeKeyboard = true };
-        }
-
-        private IScenario GetScenario(ScenarioType scenario)
-        {
-            return _scenarios.FirstOrDefault(s => s.CanHandle(scenario))
-                   ?? throw new InvalidOperationException($"Сценарий {scenario} не поддерживается.");
-        }
-
-        private async Task ProcessScenario(ScenarioContext context, Update update, CancellationToken ct)
-        {
-            var scenario = GetScenario(context.CurrentScenario);
-            var result = await scenario.HandleMessageAsync(_botClient, context, update, ct);
-
-            if (result == ScenarioResult.Completed)
-            {
-                await _contextRepository.ResetContext(context.UserId, ct);
-                var keyboard = BuildKeyboard(true);
-                await _botClient.SendTextMessageAsync(update.Message!.Chat.Id, "Сценарий завершён.", replyMarkup: keyboard, cancellationToken: ct);
+                    })
+                    { ResizeKeyboard = true };
             }
-            else
+
+            private IScenario GetScenario(ScenarioType scenario)
             {
-                await _contextRepository.SetContext(context.UserId, context, ct);
-                // Клавиатура /cancel остаётся
+                return _scenarios.FirstOrDefault(s => s.CanHandle(scenario))
+                       ?? throw new InvalidOperationException($"Сценарий {scenario} не поддерживается.");
+            }
+
+            private async Task ProcessScenario(ScenarioContext context, Update update, CancellationToken ct)
+            {
+                var scenario = GetScenario(context.CurrentScenario);
+                var result = await scenario.HandleMessageAsync(_botClient, context, update, ct);
+
+                if (result == ScenarioResult.Completed)
+                {
+                    await _contextRepository.ResetContext(context.UserId, ct);
+                    var keyboard = BuildKeyboard(true);
+                    await _botClient.SendTextMessageAsync(update.Message!.Chat.Id, "Сценарий завершён.", replyMarkup: keyboard, cancellationToken: ct);
+                }
+                else
+                {
+                    await _contextRepository.SetContext(context.UserId, context, ct);
+
+                }
             }
         }
     }
