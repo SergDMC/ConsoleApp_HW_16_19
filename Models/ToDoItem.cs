@@ -11,6 +11,9 @@ namespace ToDoListConsoleBot.Models
         public ToDoItemState State { get; set; }
         public DateTime? StateChangedAt { get; set; }
 
+        // Новый параметр дедлайна
+        public DateTime Deadline { get; set; }
+
         // Добавленные свойства для удобства репозитория
         public Guid UserId => User?.UserId ?? Guid.Empty;
 

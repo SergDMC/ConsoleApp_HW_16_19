@@ -19,7 +19,7 @@ namespace ToDoListConsoleBot.Services
             _toDoRepository = toDoRepository;
         }
 
-        public async Task<ToDoItem> AddAsync(ToDoUser user, string name, CancellationToken cancellationToken)
+        public async Task<ToDoItem> AddAsync(ToDoUser user, string name, DateTime deadline CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Имя задачи не может быть пустым.");
@@ -42,6 +42,7 @@ namespace ToDoListConsoleBot.Services
                 Name = name,
                 CreatedAt = DateTime.Now,
                 State = ToDoItemState.Active
+                Deadline = deadline
             };
 
             await _toDoRepository.AddAsync(item, cancellationToken);
