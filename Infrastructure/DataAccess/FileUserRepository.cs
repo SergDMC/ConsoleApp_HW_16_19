@@ -40,14 +40,16 @@ namespace ToDoListConsoleBot.Infrastructure.DataAccess
 
         public async Task<ToDoUser?> GetByTelegramUserIdAsync(long telegramUserId, CancellationToken ct)
         {
-            foreach (var file in Directory.GetFiles(_basePath, "*.json"))
-            {
-                var json = await File.ReadAllTextAsync(file, ct);
-                var user = JsonSerializer.Deserialize<ToDoUser>(json);
-                if (user?.TelegramUserId == telegramUserId)
-                    return user;
-            }
-            return null;
+            var users = await Task.WhenAll(
+                Directory.GetFiles(_basePath, "*.json")
+                    .Select(async file =>
+                    {
+                        var json = await File.ReadAllTextAsync(file, ct);
+                        return JsonSerializer.Deserialize<ToDoUser>(json);
+                    })
+            );
+
+            return users.FirstOrDefault(u => u?.TelegramUserId == telegramUserId);
         }
 
         public async Task<bool> ExistsAsync(long telegramUserId, CancellationToken ct)

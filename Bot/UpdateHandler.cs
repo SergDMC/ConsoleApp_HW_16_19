@@ -15,6 +15,9 @@ using Telegram.Bot.Types.ReplyMarkups;
 using ToDoListConsoleBot.Scenarios;
 using ToDoListConsoleBot.TelegramBot.Dto;
 using ToDoListConsoleBot.Core.Services;
+using ToDoListConsoleBot.Bot.Dtos;
+using ToDoListConsoleBot.Helpers;
+using ToDoListConsoleBot.Models;
 
 namespace ToDoListConsoleBot.Bot
 {
@@ -27,6 +30,8 @@ namespace ToDoListConsoleBot.Bot
         private readonly IScenarioContextRepository _contextRepository;
         private readonly IEnumerable<IScenario> _scenarios;
         private readonly IToDoListService _toDoListService;
+        private static int _pageSize = 5;
+
 
         public UpdateHandler(
             ITelegramBotClient botClient,
@@ -45,6 +50,7 @@ namespace ToDoListConsoleBot.Bot
             _contextRepository = contextRepository;
             _scenarios = scenarios;
             _toDoListService = toDoListService;
+            _pageSize = 5;
         }
 
         public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
@@ -157,31 +163,6 @@ namespace ToDoListConsoleBot.Bot
                     await ProcessScenario(scenarioContext, update, cancellationToken);
                     return;
                 }
-                if (text.StartsWith("/removetask"))
-                {
-                    if (Guid.TryParse(text[11..].Trim(), out var id))
-                    {
-                        await _toDoService.DeleteAsync(id, cancellationToken);
-                        await _botClient.SendTextMessageAsync(chatId, "Задача удалена.", cancellationToken: cancellationToken);
-                    }
-                    else
-                    {
-                        await _botClient.SendTextMessageAsync(chatId, "Неверный формат ID задачи.", cancellationToken: cancellationToken);
-                    }
-                }
-
-                else if (text.StartsWith("/completetask"))
-                {
-                    if (Guid.TryParse(text[14..].Trim(), out var id))
-                    {
-                        await _toDoService.MarkCompletedAsync(id, cancellationToken);
-                        await _botClient.SendTextMessageAsync(chatId, "Задача завершена.", cancellationToken: cancellationToken);
-                    }
-                    else
-                    {
-                        await _botClient.SendTextMessageAsync(chatId, "Неверный формат ID задачи.", cancellationToken: cancellationToken);
-                    }
-                }
 
                 else if (text.StartsWith("/report"))
                 {
@@ -219,8 +200,6 @@ namespace ToDoListConsoleBot.Bot
                     {
                         "/show - выбрать список",
                         "/addtask – добавить задачу (сценарий)",
-                        "/removetask [ID] – удалить задачу",
-                        "/completetask [ID] – завершить задачу",
                         "/report – статистика",
                         "/find [префикс] – поиск задач",
                         "/cancel – отменить текущий сценарий",
@@ -249,7 +228,7 @@ namespace ToDoListConsoleBot.Bot
                 await _botClient.SendTextMessageAsync(message.Chat.Id, $"Ошибка: {ex.Message}", cancellationToken: cancellationToken);
             }
 
-            private async Task HandleCallbackQueryAsync(CallbackQuery callbackQuery, CancellationToken cancellationToken)
+        private async Task HandleCallbackQueryAsync(CallbackQuery callbackQuery, CancellationToken cancellationToken)
             {
                 var from = callbackQuery.From;
                 if (from == null)
@@ -319,7 +298,96 @@ namespace ToDoListConsoleBot.Bot
                             $"Неизвестное действие: {dto.Action}", cancellationToken: cancellationToken);
                     }
 
+                    if (dto.Action == "showtask")
+                    {
+                        var itemDto = ToDoItemCallbackDto.FromString(callbackQuery.Data);
+                        var task = await _toDoService.Get(itemDto.ToDoItemId, cancellationToken);
+
+                        if (task == null)
+                        {
+                            await _botClient.EditMessageTextAsync(
+                                callbackQuery.Message!.Chat.Id,
+                                callbackQuery.Message.MessageId,
+                                "Задача не найдена.",
+                                cancellationToken: cancellationToken);
+                            return;
+                        }
+
+                        var buttons = new InlineKeyboardMarkup(new[]
+                        {
+                            new[]
+                            {
+                                InlineKeyboardButton.WithCallbackData("✅ Выполнить",
+                                    new ToDoItemCallbackDto { Action = "completetask", ToDoItemId = task.Id }.ToString())
+                            },
+                            new[]
+                            {
+                                InlineKeyboardButton.WithCallbackData("❌ Удалить",
+                                    new ToDoItemCallbackDto { Action = "deletetask", ToDoItemId = task.Id }.ToString())
+                            }
+                        });
+
+                        await _botClient.EditMessageTextAsync(
+                            callbackQuery.Message.Chat.Id,
+                            callbackQuery.Message.MessageId,
+                            $"[{task.Id}] {task.Name}\nСтатус: {(task.IsActive ? "Активна" : "Завершена")}",
+                            replyMarkup: buttons,
+                            cancellationToken: cancellationToken);
+                    }
+                    else if (dto.Action == "completetask")
+                    {
+                        var itemDto = ToDoItemCallbackDto.FromString(callbackQuery.Data);
+                        await _toDoService.MarkCompletedAsync(itemDto.ToDoItemId, cancellationToken);
+
+                        await _botClient.EditMessageTextAsync(
+                            callbackQuery.Message!.Chat.Id,
+                            callbackQuery.Message.MessageId,
+                            "Задача завершена ✅",
+                            cancellationToken: cancellationToken);
+                    }
+                    else if (dto.Action == "deletetask")
+                    {
+                        var itemDto = ToDoItemCallbackDto.FromString(callbackQuery.Data);
+                        var scenarioContext = new ScenarioContext(callbackQuery.From.Id, ScenarioType.DeleteTask);
+                        scenarioContext.Data["TaskId"] = itemDto.ToDoItemId.ToString();
+                        await _contextRepository.SetContext(callbackQuery.From.Id, scenarioContext, cancellationToken);
+                        await ProcessScenario(scenarioContext, new Update { CallbackQuery = callbackQuery }, cancellationToken);
+                    }
+
                     await _botClient.AnswerCallbackQueryAsync(callbackQuery.Id, cancellationToken: cancellationToken);
+
+                    else if (dto.Action == "show_completed")
+                    {
+                        var listDto = PagedListCallbackDto.FromString(callbackQuery.Data);
+                        IReadOnlyList<ToDoItem> tasks;
+
+                        if (listDto.ToDoListId == null)
+                            tasks = await _toDoService.GetCompletedByUserIdWithoutListAsync(currentUser.UserId, cancellationToken);
+                        else
+                            tasks = await _toDoService.GetCompletedByListIdAsync(listDto.ToDoListId.Value, cancellationToken);
+
+                        if (!tasks.Any())
+                        {
+                            await _botClient.EditMessageTextAsync(callbackQuery.Message!.Chat.Id,
+                                callbackQuery.Message.MessageId,
+                                "Задач нет",
+                                cancellationToken: cancellationToken);
+                            return;
+                        }
+
+                        var callbackData = tasks
+                            .Select(t => new KeyValuePair<string, string>(t.Name,
+                                new ToDoItemCallbackDto { Action = "showtask", ToDoItemId = t.Id }.ToString()))
+                            .ToList();
+
+                        var markup = BuildPagedButtons(callbackData, listDto);
+
+                        await _botClient.EditMessageTextAsync(callbackQuery.Message!.Chat.Id,
+                            callbackQuery.Message.MessageId,
+                            "Выполненные задачи:",
+                            replyMarkup: markup,
+                            cancellationToken: cancellationToken);
+                    }
                 }
                 catch
                 {
@@ -328,7 +396,7 @@ namespace ToDoListConsoleBot.Bot
             }
 
 
-            private static IReplyMarkup BuildKeyboard(bool isRegistered)
+        private static IReplyMarkup BuildKeyboard(bool isRegistered)
             {
                 return isRegistered
                     ? new ReplyKeyboardMarkup(new[]
@@ -344,14 +412,46 @@ namespace ToDoListConsoleBot.Bot
                     })
                     { ResizeKeyboard = true };
             }
+            
+        
+        private InlineKeyboardMarkup BuildPagedButtons(
+                IReadOnlyList<KeyValuePair<string, string>> callbackData,
+                PagedListCallbackDto listDto)
+            {
+                var totalPages = (int)Math.Ceiling(callbackData.Count / (double)_pageSize);
+                var pageItems = callbackData.GetBatchByNumber(_pageSize, listDto.Page);
 
-            private IScenario GetScenario(ScenarioType scenario)
+                var buttons = pageItems
+                    .Select(kvp => new[]
+                    {
+                InlineKeyboardButton.WithCallbackData(kvp.Key, kvp.Value)
+                    }).ToList();
+
+                var navButtons = new List<InlineKeyboardButton>();
+                if (listDto.Page > 0)
+                {
+                    navButtons.Add(InlineKeyboardButton.WithCallbackData("⬅️",
+                        new PagedListCallbackDto { Action = listDto.Action, ToDoListId = listDto.ToDoListId, Page = listDto.Page - 1 }.ToString()));
+                }
+                if (listDto.Page < totalPages - 1)
+                {
+                    navButtons.Add(InlineKeyboardButton.WithCallbackData("➡️",
+                        new PagedListCallbackDto { Action = listDto.Action, ToDoListId = listDto.ToDoListId, Page = listDto.Page + 1 }.ToString()));
+                }
+
+                if (navButtons.Any())
+                    buttons.Add(navButtons.ToArray());
+
+                return new InlineKeyboardMarkup(buttons);
+            }
+
+        private IScenario GetScenario(ScenarioType scenario)
             {
                 return _scenarios.FirstOrDefault(s => s.CanHandle(scenario))
                        ?? throw new InvalidOperationException($"Сценарий {scenario} не поддерживается.");
             }
 
-            private async Task ProcessScenario(ScenarioContext context, Update update, CancellationToken ct)
+        private async Task ProcessScenario(ScenarioContext context, Update update, CancellationToken ct)
             {
                 var scenario = GetScenario(context.CurrentScenario);
                 var result = await scenario.HandleMessageAsync(_botClient, context, update, ct);

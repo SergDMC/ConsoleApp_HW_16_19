@@ -53,19 +53,17 @@ namespace ToDoListConsoleBot.Infrastructure.DataAccess
         public async Task<IEnumerable<ToDoList>> GetAllByUserIdAsync(Guid userId, CancellationToken ct)
         {
             var files = Directory.GetFiles(_basePath, "*.json");
-            var lists = new List<ToDoList>();
 
-            foreach (var file in files)
-            {
-                var json = await File.ReadAllTextAsync(file, ct);
-                var list = JsonSerializer.Deserialize<ToDoList>(json);
-                if (list != null && list.UserId == userId)
+            var lists = await Task.WhenAll(
+                files.Select(async file =>
                 {
-                    lists.Add(list);
-                }
-            }
+                    var json = await File.ReadAllTextAsync(file, ct);
+                    var list = JsonSerializer.Deserialize<ToDoList>(json);
+                    return list;
+                })
+            );
 
-            return lists;
+            return lists.Where(l => l != null && l.UserId == userId)!;
         }
 
         public async Task UpdateAsync(ToDoList list, CancellationToken ct)
