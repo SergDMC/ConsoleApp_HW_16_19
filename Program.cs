@@ -63,8 +63,6 @@ internal class Program
         {
             new BotCommand { Command = "start", Description = "Регистрация" },
             new BotCommand { Command = "addtask", Description = "Добавить задачу" },
-            new BotCommand { Command = "removetask", Description = "Удалить задачу" },
-            new BotCommand { Command = "completetask", Description = "Завершить задачу" },
             new BotCommand { Command = "showtasks", Description = "Показать активные задачи" },
             new BotCommand { Command = "showalltasks", Description = "Показать все задачи" },
             new BotCommand { Command = "report", Description = "Статистика задач" },

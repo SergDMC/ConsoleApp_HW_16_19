@@ -95,17 +95,17 @@ namespace ToDoListConsoleBot.Infrastructure.DataAccess
                 return Enumerable.Empty<ToDoItem>();
 
             var files = Directory.GetFiles(userFolder, "*.json");
-            var items = new List<ToDoItem>();
 
-            foreach (var file in files)
-            {
-                var json = await File.ReadAllTextAsync(file, ct);
-                var item = JsonSerializer.Deserialize<ToDoItem>(json);
-                if (item != null)
-                    items.Add(item);
-            }
+            var tasks = files
+                .Select(async file =>
+                {
+                    var json = await File.ReadAllTextAsync(file, ct);
+                    return JsonSerializer.Deserialize<ToDoItem>(json);
+                });
 
-            return items;
+            var results = await Task.WhenAll(tasks);
+            return results.Where(item => item != null)!;
         }
+    }
     }
 }

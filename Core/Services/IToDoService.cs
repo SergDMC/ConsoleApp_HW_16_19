@@ -14,4 +14,5 @@ public interface IToDoService
     Task DeleteAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<ToDoItem>> FindAsync(ToDoUser user, string namePrefix, CancellationToken cancellationToken);
     Task<IReadOnlyList<ToDoItem>> GetByUserIdAndList(Guid userId, Guid? listId, CancellationToken ct);
+    Task<ToDoItem?> Get(Guid toDoItemId, CancellationToken ct);
 }
