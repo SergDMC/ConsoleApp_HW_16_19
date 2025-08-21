@@ -3,7 +3,7 @@
 CREATE TABLE "ToDoUser" (
     "Id" SERIAL PRIMARY KEY,
     "TelegramUserId" BIGINT NOT NULL,
-    "UserName" VARCHAR(100) NOT NULL,
+    "TelegramUserName" TEXT NOT NULL,
     "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -15,7 +15,7 @@ CREATE TABLE "ToDoList" (
     "Title" VARCHAR(200) NOT NULL,
     "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT "FK_ToDoList_User" FOREIGN KEY ("UserId")
-        REFERENCES "ToDoUser" ("Id") ON DELETE CASCADE
+        REFERENCES "ToDoUser" ("Id")
 );
 
 
@@ -31,15 +31,15 @@ CREATE TABLE "ToDoItem" (
     "Deadline" TIMESTAMP,
     "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT "FK_ToDoItem_User" FOREIGN KEY ("UserId")
-        REFERENCES "ToDoUser" ("Id") ON DELETE CASCADE,
+        REFERENCES "ToDoUser" ("Id"),
     CONSTRAINT "FK_ToDoItem_List" FOREIGN KEY ("ListId")
-        REFERENCES "ToDoList" ("Id") ON DELETE CASCADE
+        REFERENCES "ToDoList" ("Id") 
 );
 
 -- Индексы
 
 -- Уникальный индекс для TelegramUserId
-CREATE UNIQUE INDEX "IX_ToDoUser_TelegramUserId" ON "ToDoUser" ("TelegramUserId");
+CREATE UNIQUE INDEX "UQ_ToDoUser_TelegramUserId" ON "ToDoUser" ("TelegramUserId");
 
 -- Индексы по внешним ключам
 CREATE INDEX "IX_ToDoList_UserId" ON "ToDoList" ("UserId");

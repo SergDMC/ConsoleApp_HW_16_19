@@ -1,5 +1,5 @@
 -- Пользователи
-INSERT INTO "ToDoUser" ("TelegramUserId", "UserName")
+INSERT INTO "ToDoUser" ("TelegramUserId", "TelegramUserName")
 VALUES 
     (10001, 'Алиса'),
     (10002, 'Макс');*/
