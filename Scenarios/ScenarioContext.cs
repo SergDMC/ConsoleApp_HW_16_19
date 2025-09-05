@@ -23,5 +23,6 @@ namespace ToDoListConsoleBot.Scenarios
         {
             UserId = userId;
         }
+        public DateTime CreatedAt { get; } = DateTime.UtcNow;
     }
 }

@@ -29,5 +29,9 @@ namespace ToDoListConsoleBot.Scenarios
             _contexts.TryRemove(userId, out _);
             return Task.CompletedTask;
         }
+        public Task<IReadOnlyList<ScenarioContext>> GetContexts(CancellationToken ct)
+        {
+            return Task.FromResult<IReadOnlyList<ScenarioContext>>(_contexts.Values.ToList());
+        }
     }
 }
