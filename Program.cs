@@ -8,25 +8,16 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
 using Core.Services;
-using Infrastructure.DataAccess;
 using ToDoListConsoleBot.Bot;
 using ToDoListConsoleBot.Services;
 using ToDoListConsoleBot.Infrastructure.DataAccess;
+using ToDoListConsoleBot.Core.DataAccess;
+
 
 internal class Program
 {
     static async Task Main(string[] args)
     {
-        // Репозитории
-        IUserRepository userRepository = new FileUserRepository("UserData");
-        IToDoRepository toDoRepository = new FileToDoRepository("ToDoData");
-
-        // Сервисы
-        IUserService userService = new UserService(userRepository);
-        IToDoService toDoService = new ToDoService(toDoRepository);
-        IToDoReportService reportService = new ToDoReportService(toDoRepository);
-
-        // Токен из переменной среды
         var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
         if (string.IsNullOrWhiteSpace(token))
         {
@@ -36,8 +27,42 @@ internal class Program
             return;
         }
 
-        ITelegramBotClient botClient = new TelegramBotClient(token);
-        var updateHandler = new UpdateHandler(botClient, userService, toDoService, reportService);
+        using IHost host = Host.CreateDefaultBuilder(args)
+            .ConfigureAppConfiguration((context, config) =>
+            {
+                config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+            })
+            .ConfigureServices((context, services) =>
+            {
+                // Получаем IConfiguration
+                IConfiguration configuration = context.Configuration;
+                var connectionString = configuration.GetConnectionString("DefaultConnection");
+
+                // SQL-репозитории
+                services.AddSingleton<IDataContextFactory<ToDoDataContext>>(
+                    _ => new DataContextFactory(connectionString)
+                );
+
+                services.AddScoped<IUserRepository, SqlUserRepository>();
+                services.AddScoped<IToDoRepository, SqlToDoRepository>();
+                services.AddScoped<IToDoListRepository, SqlToDoListRepository>();
+
+                // Сервисы
+                services.AddScoped<IUserService, UserService>();
+                services.AddScoped<IToDoService, ToDoService>();
+                services.AddScoped<IToDoReportService, ToDoReportService>();
+
+                // TelegramBotClient и UpdateHandler
+                services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(token));
+                services.AddScoped<UpdateHandler>();
+            })
+            .Build();
+
+        using var scope = host.Services.CreateScope();
+        var services = scope.ServiceProvider;
+
+        var botClient = services.GetRequiredService<ITelegramBotClient>();
+        var updateHandler = services.GetRequiredService<UpdateHandler>();
 
         using var cts = new CancellationTokenSource();
         var cancellationToken = cts.Token;
@@ -58,7 +83,6 @@ internal class Program
         var me = await botClient.GetMeAsync(cancellationToken);
         Console.WriteLine($"{me.FirstName} (@{me.Username}) запущен!");
 
-        // Установка списка доступных команд в меню Telegram
         await botClient.SetMyCommandsAsync(new[]
         {
             new BotCommand { Command = "start", Description = "Регистрация" },
@@ -73,7 +97,6 @@ internal class Program
 
         Console.WriteLine("Нажмите клавишу A для выхода.");
 
-        // Обработка клавиш
         while (!cancellationToken.IsCancellationRequested)
         {
             var key = Console.ReadKey(intercept: true);
@@ -83,13 +106,8 @@ internal class Program
                 cts.Cancel();
                 break;
             }
-            else
-            {
-                Console.WriteLine($"Бот: {me.FirstName}, username: @{me.Username}, ID: {me.Id}");
-            }
         }
 
-        // Ждем завершения фоновых задач, если потребуется
-        await Task.Delay(1000);
+        await host.RunAsync();
     }
 }
