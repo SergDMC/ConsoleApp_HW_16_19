@@ -12,6 +12,10 @@ using ToDoListConsoleBot.Bot;
 using ToDoListConsoleBot.Services;
 using ToDoListConsoleBot.Infrastructure.DataAccess;
 using ToDoListConsoleBot.Core.DataAccess;
+using ToDoListConsoleBot.BackgroundTasks;
+using ToDoListConsoleBot.Scenarios;
+using System.Text;
+
 
 
 internal class Program
@@ -72,6 +76,12 @@ internal class Program
             AllowedUpdates = new[] { UpdateType.Message },
             DropPendingUpdates = true
         };
+        var runner = new BackgroundTaskRunner();
+
+        var scenarioRepo = services.GetRequiredService<IScenarioContextRepository>();
+        runner.AddTask(new ResetScenarioBackgroundTask(TimeSpan.FromHours(1), scenarioRepo, botClient));
+
+        runner.StartTasks(cancellationToken);
 
         botClient.StartReceiving(
             updateHandler.HandleUpdateAsync,
@@ -109,5 +119,9 @@ internal class Program
         }
 
         await host.RunAsync();
-    }
+
+        await runner.StopTasks(cancellationToken);
+
+    } 
+
 }
