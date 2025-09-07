@@ -15,4 +15,6 @@ public interface IToDoRepository
     Task<bool> ExistsByNameAsync(Guid userId, string name, CancellationToken cancellationToken);
     Task<int> CountActiveAsync(Guid userId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ToDoItem>> FindAsync(Guid userId, Func<ToDoItem, bool> predicate, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ToDoItem>> GetActiveWithDeadline(Guid userId, DateTime from, DateTime to, CancellationToken ct);
+
 }
