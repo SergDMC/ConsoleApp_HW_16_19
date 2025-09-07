@@ -15,6 +15,7 @@ using ToDoListConsoleBot.Core.DataAccess;
 using ToDoListConsoleBot.BackgroundTasks;
 using ToDoListConsoleBot.Scenarios;
 using System.Text;
+using ToDoListConsoleBot.Core.Services;
 
 
 
@@ -59,6 +60,9 @@ internal class Program
                 // TelegramBotClient и UpdateHandler
                 services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(token));
                 services.AddScoped<UpdateHandler>();
+
+                // Репозиторий сценариев
+                services.AddScoped<IScenarioContextRepository, InMemoryScenarioContextRepository>();
             })
             .Build();
 
@@ -79,7 +83,18 @@ internal class Program
         var runner = new BackgroundTaskRunner();
 
         var scenarioRepo = services.GetRequiredService<IScenarioContextRepository>();
+        var notificationService = services.GetRequiredService<INotificationService>();
+        var userRepository = services.GetRequiredService<IUserRepository>();
+        var toDoRepository = services.GetRequiredService<IToDoRepository>();
         runner.AddTask(new ResetScenarioBackgroundTask(TimeSpan.FromHours(1), scenarioRepo, botClient));
+        // Отправка нотификаций каждую минуту
+        runner.AddTask(new NotificationBackgroundTask(notificationService, botClient));
+
+        // Проверка просроченных дедлайнов каждый час
+        runner.AddTask(new DeadlineBackgroundTask(notificationService, userRepository, toDoRepository));
+
+        // Нотификации задач на сегодня раз в день
+        runner.AddTask(new TodayBackgroundTask(notificationService, userRepository, toDoRepository));
 
         runner.StartTasks(cancellationToken);
 

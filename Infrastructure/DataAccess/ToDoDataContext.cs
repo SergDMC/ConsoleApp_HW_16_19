@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 using ToDoListConsoleBot.Core.DataAccess;
+using ToDoListConsoleBot.Infrastructure.DataAccess.Models;
 
 namespace ToDoListConsoleBot.Infrastructure.DataAccess
 {
@@ -20,6 +21,8 @@ namespace ToDoListConsoleBot.Infrastructure.DataAccess
 
         public ITable<ToDoListModel> ToDoLists => GetTable<ToDoListModel>();
         public ITable<ToDoItemModel> ToDoItems => GetTable<ToDoItemModel>();
+        public ITable<NotificationModel> Notifications => GetTable<NotificationModel>();
+
     }
 
 }
